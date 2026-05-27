@@ -1,0 +1,28 @@
+# note: these values are automatically replaced when initialized with roverctl
+name: SERVICE_NAME
+author: SERVICE_AUTHOR
+source: SERVICE_SOURCE
+version: SERVICE_VERSION
+description: A template service in Python
+
+# The alias "as: controller" allows this service to be recognized as "controller"
+# by other components (like the actuator), even if its actual name is different.
+# This allows us to change the name of the service without breaking the system.
+as: controller
+
+commands:
+  build: echo "no build command needed"
+  run: ./src/main.py
+  
+inputs:
+  - service: imaging
+    streams:
+      - path
+outputs:
+  - decision
+
+configuration:
+  - name: speed
+    type: number
+    value: 0.2
+    tunable: true
