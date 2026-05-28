@@ -1,28 +1,61 @@
-# note: these values are automatically replaced when initialized with roverctl
-name: SERVICE_NAME
-author: SERVICE_AUTHOR
-source: SERVICE_SOURCE
-version: SERVICE_VERSION
-description: A template service in Python
-
-# The alias "as: controller" allows this service to be recognized as "controller"
-# by other components (like the actuator), even if its actual name is different.
-# This allows us to change the name of the service without breaking the system.
-as: controller
+name: tof
+author: vu-ase
+source: github.com/vu-ase/tof
+version: 0.0.1
+description: Reads distance frames from the TMF8829 time-of-flight sensor.
 
 commands:
-  build: echo "no build command needed"
-  run: ./src/main.py
-  
-inputs:
-  - service: imaging
-    streams:
-      - path
-outputs:
-  - decision
+  build: make build
+  run: ./bin/tof
+
+inputs: []
+
+outputs: []
 
 configuration:
-  - name: speed
+  - name: bus-type
     type: number
-    value: 0.2
+    value: 0
+    tunable: false
+    # 0 = I2C, 1 = SPI. Current rover wiring uses I2C.
+
+  - name: mode
+    type: number
+    value: 0
+    tunable: false
+    # 0 = 8x8
+    # 5 = 16x16
+    # 8 = 32x32
+    # 11 = 48x32
+
+  - name: timeout
+    type: number
+    value: 0
+    tunable: false
+    # 0 means run forever.
+
+  - name: confidence-threshold
+    type: number
+    value: 6
     tunable: true
+
+  - name: period-ms
+    type: number
+    value: 33
+    tunable: true
+
+  - name: iterations
+    type: number
+    value: 1800
+    tunable: false
+
+  - name: short-iterations
+    type: number
+    value: 100
+    tunable: false
+
+  - name: debug
+    type: number
+    value: 1
+    tunable: true
+    # 0 = off, 1 = on

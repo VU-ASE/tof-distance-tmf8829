@@ -1,0 +1,60 @@
+{
+  "name": "tof",
+  "version": "0.0.1",
+  "inputs": [],
+  "outputs": [],
+  "configuration": [
+    {
+      "name": "bus-type",
+      "type": "number",
+      "tunable": false,
+      "value": 0
+    },
+    {
+      "name": "mode",
+      "type": "number",
+      "tunable": false,
+      "value": 0
+    },
+    {
+      "name": "timeout",
+      "type": "number",
+      "tunable": false,
+      "value": 0
+    },
+    {
+      "name": "confidence-threshold",
+      "type": "number",
+      "tunable": true,
+      "value": 6
+    },
+    {
+      "name": "period-ms",
+      "type": "number",
+      "tunable": true,
+      "value": 33
+    },
+    {
+      "name": "iterations",
+      "type": "number",
+      "tunable": false,
+      "value": 1800
+    },
+    {
+      "name": "short-iterations",
+      "type": "number",
+      "tunable": false,
+      "value": 100
+    },
+    {
+      "name": "debug",
+      "type": "number",
+      "tunable": true,
+      "value": 1
+    }
+  ],
+  "tuning": {
+    "enabled": false,
+    "address": "tcp://*:8830"
+  }
+}
