@@ -1,4 +1,4 @@
-name: tof
+name: tof-distance-tmf
 author: vu-ase
 source: github.com/vu-ase/tof
 version: 0.0.1
@@ -10,15 +10,11 @@ commands:
 
 inputs: []
 
-outputs: []
+outputs:
+  - sensor-right
+  - sensor-left
 
 configuration:
-  - name: bus-type
-    type: number
-    value: 0
-    tunable: false
-    # 0 = I2C, 1 = SPI. Current rover wiring uses I2C.
-
   - name: mode
     type: number
     value: 0

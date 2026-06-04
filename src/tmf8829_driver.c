@@ -218,8 +218,8 @@ int tmf8829_app_process_irq(tmf8829_chip *chip)
         res = tmf8829ReadResults(driver);
         if (res == APP_SUCCESS_OK)
         {
-            //PRINT_DEBUG("read result successful\n");
-            //tmf8829_dump_registers(chip);
+            PRINT_DEBUG("read result successful\n");
+            return 1; // New data
         }
     }
 
@@ -228,7 +228,7 @@ int tmf8829_app_process_irq(tmf8829_chip *chip)
         res = tmf8829ReadHistogram(driver);
         if (res == APP_SUCCESS_OK)
         {
-            //PRINT_DEBUG("read histogram successful\n");
+            PRINT_DEBUG("read histogram successful\n");
         }
     }
 
