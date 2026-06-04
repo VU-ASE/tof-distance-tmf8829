@@ -118,13 +118,13 @@ int user_program(Service service, Service_configuration *configuration)
 
 
     write_stream *sensor_right = get_write_stream(&service, "sensor-right");
-    if(sensor_right = NULL){
+    if(sensor_right == NULL){
         printf("Failed to create write stream 'sensor-right'\n");
         return 1;
     }
 
     write_stream *sensor_left = get_write_stream(&service, "sensor-left");
-    if(sensor_left = NULL){
+    if(sensor_left == NULL){
         printf("Failed to create write stream 'sensor-left'\n");
         return 1;
     }
