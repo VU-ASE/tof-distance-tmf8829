@@ -4,6 +4,9 @@
 BUILD_DIR=bin/
 BINARY_NAME=tof
 
+CFLAGS_COMMON=-Wall -Wextra -O2 -g
+SERVICE_DEFINES=-DENABLE_JSON_LOGGING=1 -DENABLE_HISTOGRAM=1 -DENABLE_KEYSTONE=1
+
 # If not using VSCode's devcontainers, with docker installed you can run this command to
 # build the service inside the container.
 build-docker:
@@ -70,10 +73,9 @@ build: fetch-roverlib-c edit-headers
 	# Compile TMF8829 service files
 	@for file in ./src/*.c; do \
 		basename=$$(basename $$file); \
-		gcc -c -fPIC -Wall -Wextra -O2 \
-		-DENABLE_JSON_LOGGING -DENABLE_HISTOGRAM -DENABLE_KEYSTONE \
+		gcc -c -fPIC $(CFLAGS_COMMON) $(SERVICE_DEFINES) \
 		-o ./build/obj/service/$${basename%.c}.o $$file \
-		-I/usr/include/cjson -I./lib/include -I./src -g; \
+		-I/usr/include/cjson -I./lib/include -I./src; \
 	done
 
 	# Link final C binary

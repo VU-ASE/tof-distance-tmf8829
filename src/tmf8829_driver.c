@@ -221,6 +221,11 @@ int tmf8829_app_process_irq(tmf8829_chip *chip)
             PRINT_DEBUG("read result successful\n");
             return 1; // New data
         }
+        else if (res < 0) 
+        {
+            // CRITICAL: Pass the error code up to trigger auto-recovery!
+            return res; 
+        }
     }
 
     if (intStatus & TMF8829_APP_INT_HISTOGRAMS)
@@ -230,9 +235,14 @@ int tmf8829_app_process_irq(tmf8829_chip *chip)
         {
             PRINT_DEBUG("read histogram successful\n");
         }
+        else if (res < 0)
+        {
+            // CRITICAL: Pass the error code up here as well
+            return res; 
+        }
     }
 
-    return 0;
+    return 0; // Normal state: no new data, but no errors either
 }
 
 int tmf8829_probe(tmf8829_chip *chip)

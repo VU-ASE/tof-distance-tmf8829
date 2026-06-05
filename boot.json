@@ -2,7 +2,16 @@
   "name": "tof",
   "version": "0.0.1",
   "inputs": [],
-  "outputs": [],
+  "outputs": [
+    {
+      "name": "sensor-right",
+      "address": "tcp://*:8821"
+    },
+    {
+      "name": "sensor-left",
+      "address": "tcp://*:8822"
+    }
+  ],
   "configuration": [
     {
       "name": "bus-type",
@@ -32,7 +41,7 @@
       "name": "period-ms",
       "type": "number",
       "tunable": true,
-      "value": 33
+      "value": 200
     },
     {
       "name": "iterations",

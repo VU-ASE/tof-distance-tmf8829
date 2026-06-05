@@ -1,5 +1,5 @@
 name: tof-distance-tmf
-author: vu-ase
+author: niels
 source: github.com/vu-ase/tof
 version: 0.0.1
 description: Reads distance frames from the TMF8829 time-of-flight sensor.
@@ -37,7 +37,7 @@ configuration:
 
   - name: period-ms
     type: number
-    value: 33
+    value: 200
     tunable: true
 
   - name: iterations

@@ -423,7 +423,7 @@ int tmf8829ParseFrameFooter(tmf8829FrameParser_t *parser, uint8_t *data, int tot
     parser->state = PARSER_STATE_COMPLETE;
     
     /* Print frame info */
-    tmf8829PrintFrameInfo(parser);
+    //tmf8829PrintFrameInfo(parser);
     
     return 0;
 }
@@ -1080,7 +1080,7 @@ void handleReceivedResultDataEnd(void *dptr)
     }
 #endif
 
-    tmf8829PrintFrameResults(parser);
+    //tmf8829PrintFrameResults(parser);
 
     /* Reset for next result cycle (always reset, regardless of JSON logging) */
     /* Save resultReady state before resetting */
