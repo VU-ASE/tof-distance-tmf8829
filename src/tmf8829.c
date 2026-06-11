@@ -179,7 +179,7 @@
 #define TMF8829_COM_BL_REG_SIZE                  0x09
 #define TMF8829_COM_BL_REG_DATA0                 0x0A
 
-#define TMF8829_BL_MAX_DATA_SIZE                 0x80  // Number of bytes that can be written or read with one BL command
+#define TMF8829_BL_MAX_DATA_SIZE                 0x38  // Number of bytes that can be written or read with one BL command
 
 // Bootloader commands
 #define TMF8829_COM_BL_CMD_STAT_START_RAM_APP    0x16  // Start RAM application 
@@ -194,7 +194,7 @@
 #define TMF8829_COM_BL_CMD_STAT_FIFO_BOTH        0x45  // setup size for Fifo write to both CPU Rams
 
 #define BL_HEADER                                2     // bootloader header is 2 bytes
-#define BL_MAX_DATA_PAYLOAD                      128   // bootloader data payload can be up to 128
+#define BL_MAX_DATA_PAYLOAD                      56   // bootloader data payload can be up to 128
 #define BL_FOOTER                                1     // bootloader footer is 1 byte
 
 // Bootloader status codes

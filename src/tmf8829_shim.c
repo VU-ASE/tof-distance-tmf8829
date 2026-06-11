@@ -352,50 +352,99 @@ int spi_read(uint8_t regAddr, unsigned char *rxData, int len)
 
 ////////////////////////////////////////////////////////////////
 // i2c implemented function
-static char *i2cdev_fp = "/dev/i2c-5";
+static const char *i2cdev_fp = "/dev/i2c-7";
+
+void tmf8829_shim_set_i2c_bus(const char *bus_path) {
+    if (bus_path != NULL) {
+        i2cdev_fp = bus_path;
+        //PRINT_INFO("I2C bus path set to: %s\n", i2cdev_fp);
+    } else {
+        PRINT_INFO("Invalid I2C bus path provided, using default: %s\n", i2cdev_fp);
+    }
+}
 
 int write_i2c_block(uint32_t slave_addr, uint8_t reg, const uint8_t *buf, uint32_t len)
 {
     int32_t i2c_fd;
-    uint8_t *outbuf = NULL;
-    struct i2c_rdwr_ioctl_data data;
-    struct i2c_msg messages[1];
 
     if (buf == NULL || len == 0) {
         return -1;
     }
 
-    outbuf = (uint8_t *)malloc(len + 1);
-    if (!outbuf) {
-        return -1;
-    }
-
     i2c_fd = open(i2cdev_fp, O_RDWR);
     if (i2c_fd < 0) {
+        perror("I2C open failed");
         return -1;
     }
 
-    data.msgs = messages;
-    data.nmsgs = 1;
-
-    messages[0].addr  = slave_addr;
-    messages[0].flags = 0;
-    messages[0].buf   = outbuf;
-    messages[0].len   = len + 1;
-
-    outbuf[0] = reg;
-    memcpy(outbuf + 1, buf, len);
-
-    if (ioctl(i2c_fd, I2C_RDWR, &data) < 0) {
+    if (ioctl(i2c_fd, I2C_SLAVE, slave_addr) < 0) {
+        perror("I2C set slave failed");
         close(i2c_fd);
-        free(outbuf);
-        PRINT_INFO("I2C write failed\n");
         return -1;
     }
 
+    /*
+     * CP2112 Linux driver can only carry 61 bytes in one write request.
+     * Since our write format is:
+     *
+     *   [register byte] + [payload bytes]
+     *
+     * keep payload <= 60.
+     */
+    const uint32_t max_payload = 60;
+
+    uint32_t offset = 0;
+
+    while (offset < len)
+    {
+        uint32_t chunk = len - offset;
+
+        if (chunk > max_payload)
+        {
+            chunk = max_payload;
+        }
+
+        uint8_t *outbuf = (uint8_t *)malloc(chunk + 1);
+
+        if (outbuf == NULL)
+        {
+            close(i2c_fd);
+            return -1;
+        }
+
+        /*
+         * For normal register writes, continue at the next register.
+         * Example:
+         *   first chunk:  reg 0x22, data[0..59]
+         *   second chunk: reg 0x5E, data[60..119]
+         */
+        outbuf[0] = (uint8_t)(reg + offset);
+        memcpy(outbuf + 1, buf + offset, chunk);
+
+        if (write(i2c_fd, outbuf, chunk + 1) != (ssize_t)(chunk + 1))
+        {
+            printf("I2C write failed details: bus=%s slave=0x%02x reg=0x%02x offset=%u chunk=%u total_original=%u actual_reg=0x%02x\n",
+                   i2cdev_fp,
+                   slave_addr,
+                   reg,
+                   offset,
+                   chunk,
+                   len,
+                   outbuf[0]);
+            perror("I2C write failed");
+
+            free(outbuf);
+            close(i2c_fd);
+            return -1;
+        }
+
+        free(outbuf);
+
+        offset += chunk;
+        usleep(1000);
+    }
 
     close(i2c_fd);
-    free(outbuf);
 
     return 0;
 }
@@ -403,8 +452,6 @@ int write_i2c_block(uint32_t slave_addr, uint8_t reg, const uint8_t *buf, uint32
 int read_i2c_block(uint32_t slave_addr, uint8_t reg, uint8_t *buf, uint32_t len)
 {
     int32_t i2c_fd;
-    struct i2c_rdwr_ioctl_data data;
-    struct i2c_msg messages[2];
 
     if (buf == NULL || len == 0) {
         return -1;
@@ -412,27 +459,72 @@ int read_i2c_block(uint32_t slave_addr, uint8_t reg, uint8_t *buf, uint32_t len)
 
     i2c_fd = open(i2cdev_fp, O_RDWR);
     if (i2c_fd < 0) {
+        perror("I2C open failed");
         return -1;
     }
 
-    //PRINT_DEBUG("read_i2c_block reg:0x%x, len:%d"\n", reg, len);
-    data.msgs = messages;
-    data.nmsgs = 2;
+    const uint32_t max_read_chunk = 60;
+    uint32_t offset = 0;
 
-    messages[0].addr  = slave_addr;
-    messages[0].flags = 0;
-    messages[0].buf   = &reg;
-    messages[0].len   = 1;
+    while (offset < len)
+    {
+        uint32_t chunk = len - offset;
 
-    messages[1].addr  = slave_addr;
-    messages[1].flags = I2C_M_RD;
-    messages[1].buf   = buf;
-    messages[1].len   = len;
+        if (chunk > max_read_chunk)
+        {
+            chunk = max_read_chunk;
+        }
 
-    if (ioctl(i2c_fd, I2C_RDWR, &data) < 0) {
-        close(i2c_fd);
-        PRINT_INFO("I2C read failed\n");
-        return -1;
+        uint8_t reg_to_read;
+
+        /*
+         * FIFO is special:
+         * Always read from register 0xff.
+         * Do NOT use reg + offset.
+         */
+        if (reg == 0xff)
+        {
+            reg_to_read = reg;
+        }
+        else
+        {
+            reg_to_read = (uint8_t)(reg + offset);
+        }
+
+        struct i2c_msg messages[2];
+
+        messages[0].addr = slave_addr;
+        messages[0].flags = 0;
+        messages[0].len = 1;
+        messages[0].buf = &reg_to_read;
+
+        messages[1].addr = slave_addr;
+        messages[1].flags = I2C_M_RD;
+        messages[1].len = chunk;
+        messages[1].buf = buf + offset;
+
+        struct i2c_rdwr_ioctl_data ioctl_data;
+        ioctl_data.msgs = messages;
+        ioctl_data.nmsgs = 2;
+
+        if (ioctl(i2c_fd, I2C_RDWR, &ioctl_data) < 0)
+        {
+            printf("I2C read failed details: bus=%s slave=0x%02x reg=0x%02x actual_reg=0x%02x offset=%u chunk=%u total_original=%u\n",
+                   i2cdev_fp,
+                   slave_addr,
+                   reg,
+                   reg_to_read,
+                   offset,
+                   chunk,
+                   len);
+            perror("I2C read failed");
+
+            close(i2c_fd);
+            return -1;
+        }
+
+        offset += chunk;
+        usleep(1000);
     }
 
     close(i2c_fd);

@@ -33,15 +33,20 @@
 #include "tmf8829_keystone.h"
 #endif
 
-#define MAX_ZONES 64 // Important: Make sure this is consistent with service.yaml: 64 for 8 * 8 resolution.
+#define MAX_ZONES 256 // Important: Make sure this is consistent with service.yaml.
 
-#define I2C_BUS_PATH "/dev/i2c-5"
+#define RESET_I2C_BUS_PATH "/dev/i2c-5"
+
+#define SENSOR_A_I2C_BUS_PATH "/dev/i2c-7"   // Right
+#define SENSOR_B_I2C_BUS_PATH "/dev/i2c-8"   // Left
 
 #define MUX_ADDR 0x70
 #define EXPANDER_ADDR 0x20
 
-#define MUX_SENSOR_A 0x01   // Right
-#define MUX_SENSOR_B 0x08   // Left
+/*
+ * Sensors are no longer selected through the mux.
+ * The mux is now only used for the GPIO expander reset path.
+ */
 #define MUX_EXPANDER 0x10
 
 #define MUX_SWITCH_DELAY_US 1000
@@ -54,7 +59,7 @@
  * With period-ms = 200, each sensor should produce roughly one frame every ~200ms.
  * 1500ms gives enough tolerance.
  */
-#define WATCHDOG_TIMEOUT_MS 1500
+#define WATCHDOG_TIMEOUT_MS 10000
 
 /*
  * Data to send over the stream is not compatible with rovercom,
@@ -91,7 +96,7 @@ static long elapsed_ms_since(const struct timespec *start)
            (now.tv_nsec - start->tv_nsec) / 1000000L;
 }
 
-// I2C helper functions
+// I2C helper functions for reset mux / GPIO expander only
 static int set_mux_channel(int fd, unsigned char channel_mask)
 {
     if (ioctl(fd, I2C_SLAVE, MUX_ADDR) < 0)
@@ -141,12 +146,12 @@ static int get_config_number(Service_configuration *configuration, const char *n
     return (int)(*value);
 }
 
-static int power_cycle_sensors(int mux_fd)
+static int power_cycle_sensors(int reset_fd)
 {
     printf("[RESET] Power-cycling both TMF8829 sensors...\n");
 
-    // Connect to IO expander
-    if (set_mux_channel(mux_fd, MUX_EXPANDER) != 0)
+    // Connect to IO expander through mux on reset bus.
+    if (set_mux_channel(reset_fd, MUX_EXPANDER) != 0)
     {
         return -1;
     }
@@ -154,7 +159,7 @@ static int power_cycle_sensors(int mux_fd)
     usleep(2000);
 
     // use expander to reset sensors by power-cycling them
-    if (set_expander_reg(mux_fd, 0x03, 0x66) != 0)
+    if (set_expander_reg(reset_fd, 0x03, 0x66) != 0)
     {
         return -1;
     }
@@ -162,7 +167,7 @@ static int power_cycle_sensors(int mux_fd)
     usleep(2000);
 
     // Set state low on active pins.
-    if (set_expander_reg(mux_fd, 0x01, 0x00) != 0)
+    if (set_expander_reg(reset_fd, 0x01, 0x00) != 0)
     {
         return -1;
     }
@@ -170,7 +175,7 @@ static int power_cycle_sensors(int mux_fd)
     usleep(SENSOR_POWER_DOWN_US);
 
     // Set state high on active pins.
-    if (set_expander_reg(mux_fd, 0x01, 0x99) != 0)
+    if (set_expander_reg(reset_fd, 0x01, 0x99) != 0)
     {
         return -1;
     }
@@ -212,7 +217,7 @@ static void fill_tof_config(
     tof_cfg->shortIteration = short_iterations;
 
     /*
-     * Keep histogram disabled. 
+     * Keep histogram disabled.
      * Enabling histogram caused I2C read failures on this setup.
      */
     tof_cfg->histogram_dump = 0;
@@ -222,21 +227,20 @@ static void fill_tof_config(
 }
 
 static int init_sensor(
-    int mux_fd,
-    unsigned char mux_channel,
+    const char *i2c_bus_path,
     const char *name,
     tmf8829_chip *tof_chip,
     int preConfiguration,
     tmf8829_cfg_t *tof_cfg
 )
 {
-    printf("[INIT] Initializing %s...\n", name);
+    printf("[INIT] Initializing %s on %s...\n", name, i2c_bus_path);
 
-    if (set_mux_channel(mux_fd, mux_channel) != 0)
-    {
-        printf("[INIT] Failed to select mux channel for %s\n", name);
-        return -1;
-    }
+    /*
+     * Sensors are now on separate direct I2C buses.
+     * No mux channel selection here.
+     */
+    tmf8829_shim_set_i2c_bus(i2c_bus_path);
 
     usleep(MUX_SWITCH_DELAY_US);
 
@@ -290,7 +294,6 @@ static int init_sensor(
 }
 
 static int init_both_sensors(
-    int mux_fd,
     tmf8829_chip *tof_chip_a,
     tmf8829_chip *tof_chip_b,
     int preConfiguration,
@@ -299,8 +302,7 @@ static int init_both_sensors(
 {
     // Sensor A / Right
     if (init_sensor(
-            mux_fd,
-            MUX_SENSOR_A,
+            SENSOR_A_I2C_BUS_PATH,
             "Sensor A / Right",
             tof_chip_a,
             preConfiguration,
@@ -312,8 +314,7 @@ static int init_both_sensors(
 
     // Sensor B / Left
     if (init_sensor(
-            mux_fd,
-            MUX_SENSOR_B,
+            SENSOR_B_I2C_BUS_PATH,
             "Sensor B / Left",
             tof_chip_b,
             preConfiguration,
@@ -327,7 +328,7 @@ static int init_both_sensors(
 }
 
 static int reset_and_reinit_both_sensors(
-    int mux_fd,
+    int reset_fd,
     tmf8829_chip *tof_chip_a,
     tmf8829_chip *tof_chip_b,
     int preConfiguration,
@@ -341,14 +342,13 @@ static int reset_and_reinit_both_sensors(
      * It previously hung on this setup.
      * Hardware reset is safer here.
      */
-    if (power_cycle_sensors(mux_fd) != 0)
+    if (power_cycle_sensors(reset_fd) != 0)
     {
         printf("[WATCHDOG] Power cycle failed\n");
         return -1;
     }
 
     if (init_both_sensors(
-            mux_fd,
             tof_chip_a,
             tof_chip_b,
             preConfiguration,
@@ -523,8 +523,7 @@ static void print_tof_summary(const char *name, int local_frame_counter, tmf8829
 }
 
 static int process_one_sensor(
-    int mux_fd,
-    unsigned char mux_channel,
+    const char *i2c_bus_path,
     const char *name,
     tmf8829_chip *tof_chip,
     write_stream *sensor_stream,
@@ -533,13 +532,11 @@ static int process_one_sensor(
     int debug
 )
 {
-    if (set_mux_channel(mux_fd, mux_channel) != 0)
-    {
-        printf("[%s] Failed to select mux channel\n", name);
-        return -1;
-    }
-
-    usleep(MUX_SWITCH_DELAY_US);
+    /*
+     * Sensors are now on separate direct I2C buses.
+     * No mux channel selection here.
+     */
+    tmf8829_shim_set_i2c_bus(i2c_bus_path);
 
     int result = tmf8829_app_process_irq(tof_chip);
 
@@ -642,21 +639,25 @@ int user_program(Service service, Service_configuration *configuration)
     signal(SIGINT, catch_signal);
     signal(SIGTERM, catch_signal);
 
-    // Open control handle for native multiplexing.
-    int mux_fd = open(I2C_BUS_PATH, O_RDWR);
+    /*
+     * Open reset bus only.
+     * This bus is used for mux + GPIO expander reset.
+     * Sensors themselves are on /dev/i2c-7 and /dev/i2c-8.
+     */
+    int reset_fd = open(RESET_I2C_BUS_PATH, O_RDWR);
 
-    if (mux_fd < 0)
+    if (reset_fd < 0)
     {
-        perror("Fatal: Failed to open I2C bus for MUX control");
+        perror("Fatal: Failed to open reset I2C bus for MUX/expander control");
         return 1;
     }
 
     printf("Executing initial hardware power-on and reset sequence...\n");
 
-    if (power_cycle_sensors(mux_fd) != 0)
+    if (power_cycle_sensors(reset_fd) != 0)
     {
         printf("Fatal: initial hardware reset failed\n");
-        close(mux_fd);
+        close(reset_fd);
         return 1;
     }
 
@@ -681,7 +682,6 @@ int user_program(Service service, Service_configuration *configuration)
     tmf8829_chip *tof_chip_b = &g_tof_chip_b;
 
     if (init_both_sensors(
-            mux_fd,
             tof_chip_a,
             tof_chip_b,
             preConfiguration,
@@ -689,7 +689,7 @@ int user_program(Service service, Service_configuration *configuration)
         ) != 0)
     {
         printf("Fatal: failed to initialize both sensors\n");
-        close(mux_fd);
+        close(reset_fd);
         return 1;
     }
 
@@ -712,8 +712,7 @@ int user_program(Service service, Service_configuration *configuration)
         // --- Process Sensor A (Right) ---
         // =================================================================
         process_one_sensor(
-            mux_fd,
-            MUX_SENSOR_A,
+            SENSOR_A_I2C_BUS_PATH,
             "RIGHT/A",
             tof_chip_a,
             sensor_right,
@@ -726,8 +725,7 @@ int user_program(Service service, Service_configuration *configuration)
         // --- Process Sensor B (Left) ---
         // =================================================================
         process_one_sensor(
-            mux_fd,
-            MUX_SENSOR_B,
+            SENSOR_B_I2C_BUS_PATH,
             "LEFT/B",
             tof_chip_b,
             sensor_left,
@@ -749,7 +747,7 @@ int user_program(Service service, Service_configuration *configuration)
                    b_silent_ms);
 
             if (reset_and_reinit_both_sensors(
-                    mux_fd,
+                    reset_fd,
                     tof_chip_a,
                     tof_chip_b,
                     preConfiguration,
@@ -772,34 +770,32 @@ int user_program(Service service, Service_configuration *configuration)
             g_stop_requested = 1;
         }
 
-        usleep(1000);
+        usleep(50000);
     }
 
     printf("Stopping TMF8829 service...\n");
     fflush(stdout);
 
     // Cleanup Sensor A
-    set_mux_channel(mux_fd, MUX_SENSOR_A);
-    usleep(MUX_SWITCH_DELAY_US);
+    tmf8829_shim_set_i2c_bus(SENSOR_A_I2C_BUS_PATH);
     tmf8829PrintFpsStats(&tof_chip_a->frameParser);
     tmf8829_cleanup(tof_chip_a);
 
     // Cleanup Sensor B
-    set_mux_channel(mux_fd, MUX_SENSOR_B);
-    usleep(MUX_SWITCH_DELAY_US);
+    tmf8829_shim_set_i2c_bus(SENSOR_B_I2C_BUS_PATH);
     tmf8829PrintFpsStats(&tof_chip_b->frameParser);
     tmf8829_cleanup(tof_chip_b);
 
     // Turn off sensors via Expander on exit to guarantee cold-boot next run.
     printf("Powering down sensors via GPIO expander to prepare for future runs...\n");
 
-    set_mux_channel(mux_fd, MUX_EXPANDER);
+    set_mux_channel(reset_fd, MUX_EXPANDER);
     usleep(2000);
-    set_expander_reg(mux_fd, 0x01, 0x00);
+    set_expander_reg(reset_fd, 0x01, 0x00);
     usleep(5000);
 
-    // Close MUX handle.
-    close(mux_fd);
+    // Close reset bus handle.
+    close(reset_fd);
 
     printf("TMF8829 TOF service stopped\n");
     fflush(stdout);

@@ -68,6 +68,7 @@ int spi_init(void);
 void delayInMicroseconds(uint32_t wait);
 uint32_t getSysTick(void);
 uint8_t readProgramMemoryByte(uintptr_t address);
+void tmf8829_shim_set_i2c_bus(const char *bus_path);
 int8_t txReg(void *dptr, uint8_t slaveAddr, uint8_t regAddr, uint16_t toTx, uint8_t *txData);
 int8_t rxReg(void *dptr, uint8_t slaveAddr, uint8_t regAddr, uint16_t toRx, uint8_t *rxData);
 int enablePinHigh(void *dptr);
